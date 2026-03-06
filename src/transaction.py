@@ -235,32 +235,44 @@ class TransactionProcessor:
         return 0.0
 
 
-    def can_transfer(self, sender_account, amount: float) -> bool:
+    def can_transfer(self, sender_account, amount_in_sender_currency: float) -> bool:
         """
         Check if the sender account can transfer the given amount.
 
         Rules:
             - Transfers are not allowed
                 if the account status is "frozen".
-            - Account balance must remain non-negative
-                after transfer for non-premium accounts.
+            - For standard accounts, the balance after transfer
+                must remain non-negative.
+            - For premium accounts, the balance after transfer
+                must not exceed the overdraft limit (i.e. must stay
+                >= -overdraft_limit).
 
         Args:
             sender_account: The sender's account object
                 with balance and status attributes.
-            amount (float): The total amount
-                (including commission) to be transferred.
+            amount_in_sender_currency (float): The total amount to be
+                transferred, already converted to the sender's currency.
 
         Returns:
             bool: True if transfer is allowed, False otherwise.
         """
-        # Balance below 0 (except premium) not allowed
         # Frozen accounts not allowed
         if sender_account.status == "frozen":
             return False
-        if sender_account.acc_balance - amount < 0 and \
-        not sender_account.acc_type == "premium_account":
-            return False
+
+        # FIX: amount is now expected in the sender's currency (conversion
+        # happens in process() before calling can_transfer), so the balance
+        # comparison is always in the same currency unit.
+        # For premium accounts, respect the overdraft_limit attribute
+        # instead of allowing unlimited negative balances.
+        if sender_account.acc_type == "premium_account":
+            if sender_account.acc_balance - amount_in_sender_currency < -sender_account.overdraft_limit:
+                return False
+        else:
+            if sender_account.acc_balance - amount_in_sender_currency < 0:
+                return False
+
         return True
 
 
@@ -298,7 +310,16 @@ class TransactionProcessor:
         commission = self.calculate_commission(transaction)
         total_amount = transaction.amount + commission
 
-        if not self.can_transfer(transaction.sender_account, total_amount):
+        # FIX: Convert the total amount to the sender's currency before
+        # calling can_transfer, so the balance check is done in the correct
+        # currency units (fixes false positives/negatives across currencies).
+        total_in_sender_currency = self.convert_currency(
+            total_amount,
+            transaction.currency,
+            transaction.sender_account.currency
+        )
+
+        if not self.can_transfer(transaction.sender_account, total_in_sender_currency):
             transaction.status = TransactionStatus.FAILED
             transaction.fail_reason = "Insufficient funds or overdraft restricted"
             transaction.completed_at = datetime.now()
