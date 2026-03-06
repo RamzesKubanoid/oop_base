@@ -4,6 +4,7 @@ import os
 from collections import Counter
 from datetime import datetime
 import matplotlib.pyplot as plt
+from src.transaction import TransactionStatus
 
 
 class ReportBuilder:
@@ -92,9 +93,11 @@ class ReportBuilder:
         """
         report = ["Risk report:"]
 
+        # FIX: compare with TransactionStatus,
+        # FAILED and CANCELLED are explicitly listed
         errors = [
             txn for txn in self.transactions.values() \
-            if txn.status.name != "SUCCESS"
+            if txn.status in (TransactionStatus.FAILED, TransactionStatus.CANCELLED)
         ]
         report.append(f"Total suspicious/failed transactions: {len(errors)}")
         risk_clients = set(

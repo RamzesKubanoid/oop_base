@@ -75,7 +75,7 @@ class RiskAnalyzer:
     def __init__(
         self,
         audit_log: AuditLog,
-        large_amount_threshold: float = 10000.0,
+        large_amount_threshold: float = 500000.0,
         frequent_count_threshold: int = 3,
         frequent_time_window_mins: int = 60,
         night_start: time = time(0, 0),
